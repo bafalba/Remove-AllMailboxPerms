@@ -45,6 +45,7 @@ try {
         $mbxId = $mbx.Identity
         Write-Host "Processing mailbox: $($mbx.PrimarySmtpAddress) ($mbxId)" -ForegroundColor Cyan
 
+
         # --- FullAccess ---
         $faPerms = Get-EXOMailboxPermission -Identity $mbxId -User $Trainee.PrimarySmtpAddress -ErrorAction SilentlyContinue
         if ($faPerms) {
@@ -52,8 +53,8 @@ try {
                 if ($WhatIf) {
                     Write-Host "[WhatIf] Remove FullAccess from $mbxId" -ForegroundColor Yellow
                 } else {
-                    Remove-EXOMailboxPermission -Identity $mbxId -User $Trainee.PrimarySmtpAddress `
-                        -AccessRights FullAccess -Confirm:$false -ErrorAction Stop
+                    Remove-MailboxPermission -Identity $mbxId -User $Trainee.PrimarySmtpAddress `
+                        -AccessRights FullAccess -InheritanceType All -Confirm:$false -ErrorAction Stop
                 }
                 $changed = $true
                 $results += [pscustomobject]@{ Mailbox=$mbx.PrimarySmtpAddress; Identity=$mbxId; Permission='FullAccess'; Status= $(if($WhatIf){'Would Remove'} else {'Removed'}) }
@@ -69,7 +70,7 @@ try {
                 if ($WhatIf) {
                     Write-Host "[WhatIf] Remove SendAs from $mbxId" -ForegroundColor Yellow
                 } else {
-                    Remove-EXORecipientPermission -Identity $mbxId -Trustee $Trainee.PrimarySmtpAddress `
+                    Remove-RecipientPermission -Identity $mbxId -Trustee $Trainee.PrimarySmtpAddress `
                         -AccessRights SendAs -Confirm:$false -ErrorAction Stop
                 }
                 $changed = $true
@@ -111,17 +112,28 @@ try {
     $results | Export-Csv $csvFile -NoTypeInformation
     Write-Host "Results exported to $csvFile" -ForegroundColor Green
 
-    # --- Show all mailbox permissions for the user (EXO only) ---
+
+    # --- Show all mailbox permissions for the user ---
     Write-Host "\nCurrent permissions for $($Trainee.PrimarySmtpAddress):" -ForegroundColor Cyan
 
-    Write-Host "\nFullAccess permissions:" -ForegroundColor Yellow
-    Get-EXOMailboxPermission -ResultSize Unlimited | Where-Object { $_.User -eq $Trainee.PrimarySmtpAddress } | Format-Table Identity, AccessRights, Deny, IsInherited -AutoSize
-
-    Write-Host "\nSendAs permissions:" -ForegroundColor Yellow
-    Get-EXORecipientPermission -ResultSize Unlimited | Where-Object { $_.Trustee -eq $Trainee.PrimarySmtpAddress } | Format-Table Identity, AccessRights, Trustee -AutoSize
-
-    Write-Host "\nSendOnBehalf permissions:" -ForegroundColor Yellow
-    Get-EXOMailbox -ResultSize Unlimited -Properties GrantSendOnBehalfTo | Where-Object { $_.GrantSendOnBehalfTo -contains $Trainee.PrimarySmtpAddress } | Select-Object Identity, GrantSendOnBehalfTo | Format-Table -AutoSize
+    foreach ($mbx in $mailboxes) {
+        Write-Host ("\nMailbox: {0}" -f $mbx.PrimarySmtpAddress) -ForegroundColor Yellow
+        $fa = Get-EXOMailboxPermission -Identity $mbx.Identity -User $Trainee.PrimarySmtpAddress -ErrorAction SilentlyContinue
+        if ($fa) {
+            Write-Host "FullAccess:" -ForegroundColor Yellow
+            $fa | Format-Table Identity, AccessRights, Deny, IsInherited -AutoSize
+        }
+        $sa = Get-EXORecipientPermission -Identity $mbx.Identity -Trustee $Trainee.PrimarySmtpAddress -ErrorAction SilentlyContinue
+        if ($sa) {
+            Write-Host "SendAs:" -ForegroundColor Yellow
+            $sa | Format-Table Identity, AccessRights, Trustee -AutoSize
+        }
+        $mbxDetails = Get-EXOMailbox -Identity $mbx.Identity -Properties GrantSendOnBehalfTo -ErrorAction SilentlyContinue
+        if ($mbxDetails -and $mbxDetails.GrantSendOnBehalfTo -contains $Trainee.PrimarySmtpAddress) {
+            Write-Host "SendOnBehalf:" -ForegroundColor Yellow
+            Write-Host ($mbxDetails.GrantSendOnBehalfTo | Out-String)
+        }
+    }
 
     # --- Wait for user input to exit ---
     Write-Host "\nPress Y to exit..." -ForegroundColor Green
