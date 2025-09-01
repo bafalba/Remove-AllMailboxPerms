@@ -45,39 +45,47 @@ try {
         $mbxId = $mbx.Identity
 
         # --- FullAccess ---
-        try {
-            if ($WhatIf) {
-                Write-Host "[WhatIf] Remove FullAccess from $mbxId" -ForegroundColor Yellow
-            } else {
-                Remove-MailboxPermission -Identity $mbxId -User $trustee.PrimarySmtpAddress `
-                    -AccessRights FullAccess -InheritanceType All -Confirm:$false -ErrorAction Stop
-            }
-            $changed = $true
-            $results += [pscustomobject]@{ Mailbox=$mbxId; Permission='FullAccess'; Status= $(if($WhatIf){'Would Remove'} else {'Removed'}) }
-        } catch { }
+        $faPerms = Get-MailboxPermission -Identity $mbxId | Where-Object { $_.User -eq $trustee.PrimarySmtpAddress -and $_.AccessRights -contains 'FullAccess' }
+        if ($faPerms) {
+            try {
+                if ($WhatIf) {
+                    Write-Host "[WhatIf] Remove FullAccess from $mbxId" -ForegroundColor Yellow
+                } else {
+                    Remove-MailboxPermission -Identity $mbxId -User $trustee.PrimarySmtpAddress `
+                        -AccessRights FullAccess -InheritanceType All -Confirm:$false -ErrorAction Stop
+                }
+                $changed = $true
+                $results += [pscustomobject]@{ Mailbox=$mbxId; Permission='FullAccess'; Status= $(if($WhatIf){'Would Remove'} else {'Removed'}) }
+            } catch { }
+        }
 
         # --- SendAs ---
-        try {
-            if ($WhatIf) {
-                Write-Host "[WhatIf] Remove SendAs from $mbxId" -ForegroundColor Yellow
-            } else {
-                Remove-RecipientPermission -Identity $mbxId -Trustee $trustee.PrimarySmtpAddress `
-                    -AccessRights SendAs -Confirm:$false -ErrorAction Stop
-            }
-            $changed = $true
-            $results += [pscustomobject]@{ Mailbox=$mbxId; Permission='SendAs'; Status= $(if($WhatIf){'Would Remove'} else {'Removed'}) }
-        } catch { }
+        $saPerms = Get-RecipientPermission -Identity $mbxId | Where-Object { $_.Trustee -eq $trustee.PrimarySmtpAddress -and $_.AccessRights -contains 'SendAs' }
+        if ($saPerms) {
+            try {
+                if ($WhatIf) {
+                    Write-Host "[WhatIf] Remove SendAs from $mbxId" -ForegroundColor Yellow
+                } else {
+                    Remove-RecipientPermission -Identity $mbxId -Trustee $trustee.PrimarySmtpAddress `
+                        -AccessRights SendAs -Confirm:$false -ErrorAction Stop
+                }
+                $changed = $true
+                $results += [pscustomobject]@{ Mailbox=$mbxId; Permission='SendAs'; Status= $(if($WhatIf){'Would Remove'} else {'Removed'}) }
+            } catch { }
+        }
 
         # --- SendOnBehalf ---
-        try {
-            if ($WhatIf) {
-                Write-Host "[WhatIf] Remove SendOnBehalf from $mbxId" -ForegroundColor Yellow
-            } else {
-                Set-Mailbox -Identity $mbxId -GrantSendOnBehalfTo @{remove=$trustee.PrimarySmtpAddress} -ErrorAction Stop
-            }
-            $changed = $true
-            $results += [pscustomobject]@{ Mailbox=$mbxId; Permission='SendOnBehalf'; Status= $(if($WhatIf){'Would Remove'} else {'Removed'}) }
-        } catch { }
+        if ($mbx.GrantSendOnBehalfTo -contains $trustee.PrimarySmtpAddress) {
+            try {
+                if ($WhatIf) {
+                    Write-Host "[WhatIf] Remove SendOnBehalf from $mbxId" -ForegroundColor Yellow
+                } else {
+                    Set-Mailbox -Identity $mbxId -GrantSendOnBehalfTo @{remove=$trustee.PrimarySmtpAddress} -ErrorAction Stop
+                }
+                $changed = $true
+                $results += [pscustomobject]@{ Mailbox=$mbxId; Permission='SendOnBehalf'; Status= $(if($WhatIf){'Would Remove'} else {'Removed'}) }
+            } catch { }
+        }
 
         if (-not $changed) {
             $results += [pscustomobject]@{ Mailbox=$mbxId; Permission='(none matched)'; Status='No change' }
